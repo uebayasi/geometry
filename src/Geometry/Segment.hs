@@ -161,7 +161,7 @@ instance (Show1 v, Show n) => Show (Segment v n) where
   showsPrec = showsPrec1
 
 instance Each (Segment v n) (Segment v n) (v n) (v n) where
-  each f (Linear v) = Linear <$> f v
+  each f (Linear v)       = Linear <$> f v
   each f (Cubic c1 c2 c3) = Cubic <$> f c1 <*> f c2 <*> f c3
   {-# INLINE each #-}
 
@@ -960,7 +960,7 @@ segmentParametersAtDirection
       b = 2*(tx*(y2 - 2*y1) - ty*(x2 - 2*x1))
       c = tx*y1 - ty*x1
 segmentParametersAtDirection _ _ = []
-{-# INLINE segmentParametersAtDirection#-}
+{-# INLINE segmentParametersAtDirection #-}
 
 bezierParametersAtDirection
   :: OrderedField n
@@ -976,5 +976,5 @@ bezierParametersAtDirection
       b = 2*(tx*((y2 + y0) - 2*y1) - ty*((x2 + x0) - 2*x1))
       c = tx*(y1 - y0) - ty*(x1 - x0)
 bezierParametersAtDirection _ _ = []
-{-# INLINE bezierParametersAtDirection#-}
+{-# INLINE bezierParametersAtDirection #-}
 

@@ -23,18 +23,18 @@ module Geometry.TwoD.Types
   , HasR (..)
   ) where
 
-import           Control.Lens            (Iso', Lens', iso, _1, _2)
+import           Control.Lens       (Iso', Lens', iso, _1, _2)
 
 import           Geometry.Angle
 import           Geometry.Points
 
-import           Geometry.Transform
 import           Geometry.Space
+import           Geometry.Transform
 
 import           Linear.Metric
 import           Linear.V2
 
-type P2 = Point V2
+-- type P2 = Point V2
 type T2 = Transformation V2
 
 type instance V (V2 n) = V2

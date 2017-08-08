@@ -27,8 +27,8 @@ import           Control.Lens        (Iso', iso, _1, _2, _3)
 
 import           Geometry.Angle
 import           Geometry.Points
-import           Geometry.Transform
 import           Geometry.Space
+import           Geometry.Transform
 import           Geometry.TwoD.Types
 
 import           Linear.Metric
@@ -39,7 +39,7 @@ import           Linear.V3           as V
 
 -- Basic R3 types
 
-type P3 = Point V3
+-- type P3 = Point V3
 type T3 = Transformation V3
 
 r3Iso :: Iso' (V3 n) (n, n, n)

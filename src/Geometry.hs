@@ -29,7 +29,7 @@ module Geometry
     -- * TwoD
   , module Geometry.TwoD.Arc
   , module Geometry.TwoD.Combinators
-  , module Geometry.TwoD.Curvature
+  -- , module Geometry.TwoD.Curvature
   , module Geometry.TwoD.Ellipse
   , module Geometry.TwoD.Path
   , module Geometry.TwoD.Points
@@ -80,7 +80,7 @@ import           Geometry.Trail
 import           Geometry.Transform
 import           Geometry.TwoD.Arc
 import           Geometry.TwoD.Combinators
-import           Geometry.TwoD.Curvature
+-- import           Geometry.TwoD.Curvature
 import           Geometry.TwoD.Ellipse
 import           Geometry.TwoD.Path
 import           Geometry.TwoD.Points
