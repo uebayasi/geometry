@@ -20,7 +20,9 @@
 -- possible to do anything sensible with them under rotation), so they
 -- are not used in the diagrams core.  However, they do have their
 -- uses; this module provides definitions and functions for working
--- with them.
+-- with them.  In particular it is very fast to query whether a given
+-- point is contained in a bounding box (/e.g./ using the
+-- 'Geometry.Query.inquire' function).
 --
 -----------------------------------------------------------------------------
 
@@ -29,22 +31,30 @@ module Geometry.BoundingBox
     BoundingBox (..)
 
     -- * Constructing bounding boxes
-  , emptyBox, fromCorners
+  , emptyBox, fromCorners, fromPoint, fromPoints
 
     -- * Queries on bounding boxes
+  , isEmptyBox
   , getCorners, getAllCorners
   , boxExtents, boxCenter
-  , boxTransform -- , boxFit
-  , boxIntersection
+  , boxTransform
+
+  , boxContains, boxContains'
+  , insideBox, insideBox', outsideBox, outsideBox'
+
+    -- * Operations on bounding boxes
+  , boxUnion, boxIntersection
   ) where
 
 import           Control.Applicative
-import           Control.Lens         hiding (contains, inside, outside)
+import           Control.Lens
+import           Data.Coerce
 import           Data.Foldable        as F
 import           Data.Functor.Classes
+import           Data.Maybe           (fromMaybe)
 import           Data.Semigroup
+import qualified Data.Sequence        as Seq
 import           Text.Read
-import qualified Data.Sequence as Seq
 
 import           Data.Traversable     as T
 import           Linear.Affine
@@ -58,11 +68,26 @@ import           Geometry.Transform
 -- | A bounding box is an axis-aligned region determined by two points
 --   indicating its \"lower\" and \"upper\" corners. It can also
 --   represent an empty bounding box.
+--
+--   The 'Semigroup' and 'Monoid' instances of 'BoundingBox' can be
+--   used to take the union of bounding boxes, with the empty bounding
+--   box as the identity.
 data BoundingBox v n
   = EmptyBox
   | BoundingBox !(Point v n) !(Point v n)
-  deriving Eq
+    -- Invariant: the first point is coordinatewise <= the second point.
 
+type instance V (BoundingBox v n) = v
+type instance N (BoundingBox v n) = n
+
+instance (Eq1 v, Eq n) => Eq (BoundingBox v n) where
+  EmptyBox          == EmptyBox          = True
+  BoundingBox a1 b1 == BoundingBox a2 b2 = eq1 a1 a2 && eq1 b1 b2
+  _                 == _                 = False
+  {-# INLINE (==) #-}
+
+-- | The combination of two bounding boxes is the smallest bounding
+--   box that contains both.
 instance (Additive v, Ord n) => Semigroup (BoundingBox v n) where
   EmptyBox <> bb2                        = bb2
   bb1      <> EmptyBox                   = bb1
@@ -76,27 +101,26 @@ instance (Additive v, Ord n) => Monoid (BoundingBox v n) where
   mempty = EmptyBox
   {-# INLINE mempty #-}
 
--- unexported utility
+instance AsEmpty (BoundingBox v n) where
+  _Empty = nearly emptyBox isEmptyBox
+  {-# INLINE _Empty #-}
+
+-- A traversal over the two defining corners (pointwise min and max)
+-- of a bounding box.  This is an unexported internal utility; it
+-- should *not* be exported because it would allow making arbitrary
+-- modifications to the box's corners, which could invalidate the
+-- invariant that the first corner is coordinatewise <= the second.
 boxPoints :: Traversal' (BoundingBox v n) (Point v n)
 boxPoints f (BoundingBox a b) = BoundingBox <$> f a <*> f b
 boxPoints _ eb                = pure eb
 {-# INLINE boxPoints #-}
-
-instance AsEmpty (BoundingBox v n) where
-  _Empty = nearly emptyBox (\case EmptyBox -> True; _ -> False)
-  {-# INLINE _Empty #-}
-
-type instance V (BoundingBox v n) = v
-type instance N (BoundingBox v n) = n
 
 instance (Additive v, Num n) => HasOrigin (BoundingBox v n) where
   moveOriginTo p = boxPoints %~ moveOriginTo p
   {-# INLINE moveOriginTo #-}
 
 instance (Additive v, Foldable v, Ord n) => HasQuery (BoundingBox v n) Any where
-  getQuery EmptyBox          = mempty
-  getQuery (BoundingBox l u) = Query $ \p ->
-    Any $ F.and (liftI2 (<=) l p) && F.and (liftI2 (<=) p u)
+  getQuery = coerce (boxContains :: BoundingBox v n -> Point v n -> Bool)
   {-# INLINE getQuery #-}
 
 -- | Possible time values for intersecting a bounding box. Either we
@@ -198,6 +222,7 @@ instance (Read1 v, Read n) => Read (BoundingBox v n) where
 
 -- | An empty bounding box.  This is the same thing as @mempty@, but it doesn't
 --   require the same type constraints that the @Monoid@ instance does.
+--   This is a specialised version of 'Empty'.
 emptyBox :: BoundingBox v n
 emptyBox = EmptyBox
 {-# INLINE emptyBox #-}
@@ -212,20 +237,38 @@ fromCorners l h
   | otherwise               = EmptyBox
 {-# INLINE fromCorners #-}
 
--- | Gets the lower and upper corners that define the bounding box.
+-- | Create a degenerate bounding \"box\" containing only a single
+--   point. This is a specialised version of
+--   'Geometry.Envelope.boundingBox'.
+fromPoint :: Point v n -> BoundingBox v n
+fromPoint p = BoundingBox p p
+{-# INLINE fromPoint #-}
+
+-- | Create the smallest bounding box containing all the given points.
+--   This is a specialised version of 'Geometry.Envelope.boundingBox'.
+fromPoints :: (Additive v, Ord n) => [Point v n] -> BoundingBox v n
+fromPoints = mconcat . map fromPoint
+{-# INLINE fromPoints #-}
+
+-- | Test whether the BoundingBox is empty.
+isEmptyBox :: BoundingBox v n -> Bool
+isEmptyBox = \case EmptyBox -> True; _ -> False
+{-# INLINE isEmptyBox #-}
+
+-- | Get the lower and upper corners that define the bounding box.
 getCorners :: BoundingBox v n -> Maybe (Point v n, Point v n)
 getCorners (BoundingBox l u) = Just (l, u)
 getCorners _                 = Nothing
 {-# INLINE getCorners #-}
 
--- | Computes all of the corners of the bounding box.
+-- | List all of the corners of the bounding box.
 getAllCorners :: (Additive v, Traversable v) => BoundingBox v n -> [Point v n]
 getAllCorners EmptyBox          = []
 getAllCorners (BoundingBox l u) = T.sequence (liftI2 (\a b -> [a,b]) l u)
 {-# INLINE getAllCorners #-}
 
--- | Get the size of the bounding box - the vector from the (component-wise)
---   lesser point to the greater point. An empty bounding box has 'zero'
+-- | Get the size of the bounding box, that is, the vector from the (component-wise)
+--   smallest corner to the greatest corner. An empty bounding box has 'zero'
 --   extent.
 boxExtents :: (Additive v, Num n) => BoundingBox v n -> v n
 boxExtents (BoundingBox l u) = u .-. l
@@ -244,14 +287,63 @@ boxTransform
 boxTransform u v = do
   (P ul, _) <- getCorners u
   (P vl, _) <- getCorners v
-  let -- i  = s (v, u) <-> s (u, v)
-      vec = liftU2 (/) (boxExtents v) (boxExtents u)
-      -- s = liftU2 (*) . uncurry (liftU2 (/)) . over both boxExtents
+  let vec = liftU2 (/) (boxExtents v) (boxExtents u)
       T m m_ _  = scalingV vec
   return $ T m m_ (vl ^-^ liftU2 (*) vec ul)
-  -- XXX IS THIS CORRECT?
 
--- | Form the largest bounding box contained within this given two
+-- | Check whether a point is contained in a bounding box (inclusive
+--   of its boundary). This is a specialised version of 'inquire'.
+boxContains :: (Additive v, Foldable v, Ord n) => BoundingBox v n -> Point v n -> Bool
+boxContains b p = maybe False test $ getCorners b
+  where
+    test (l, h) = F.and (liftI2 (<=) l p)
+               && F.and (liftI2 (<=) p h)
+
+-- | Check whether a point is /strictly/ contained in a bounding box,
+--   /i.e./ excluding the boundary.
+boxContains' :: (Additive v, Foldable v, Ord n) => BoundingBox v n -> Point v n -> Bool
+boxContains' b p = maybe False test $ getCorners b
+  where
+    test (l, h) = F.and (liftI2 (<) l p)
+               && F.and (liftI2 (<) p h)
+
+-- | Test whether the first bounding box is contained inside
+--   the second.
+insideBox :: (Additive v, Foldable v, Ord n) => BoundingBox v n -> BoundingBox v n -> Bool
+insideBox u v = fromMaybe False $ do
+  (ul, uh) <- getCorners u
+  (vl, vh) <- getCorners v
+  return $ F.and (liftI2 (>=) ul vl)
+        && F.and (liftI2 (<=) uh vh)
+
+-- | Test whether the first bounding box is /strictly/ contained
+--   inside the second.
+insideBox' :: (Additive v, Foldable v, Ord n) => BoundingBox v n -> BoundingBox v n -> Bool
+insideBox' u v = fromMaybe False $ do
+  (ul, uh) <- getCorners u
+  (vl, vh) <- getCorners v
+  return $ F.and (liftI2 (>) ul vl)
+        && F.and (liftI2 (<) uh vh)
+
+-- | Test whether the first bounding box lies outside the second
+--   (although they may intersect in their boundaries).
+outsideBox :: (Additive v, Foldable v, Ord n) => BoundingBox v n -> BoundingBox v n -> Bool
+outsideBox u v = fromMaybe True $ do
+  (ul, uh) <- getCorners u
+  (vl, vh) <- getCorners v
+  return $ F.or (liftI2 (<=) uh vl)
+        || F.or (liftI2 (>=) ul vh)
+
+-- | Test whether the first bounding box lies /strictly/ outside the second
+--   (they do not intersect at all).
+outsideBox' :: (Additive v, Foldable v, Ord n) => BoundingBox v n -> BoundingBox v n -> Bool
+outsideBox' u v = fromMaybe True $ do
+  (ul, uh) <- getCorners u
+  (vl, vh) <- getCorners v
+  return $ F.or (liftI2 (<) uh vl)
+        || F.or (liftI2 (>) ul vh)
+
+-- | Form the largest bounding box contained within the given two
 --   bounding boxes, or @Nothing@ if the two bounding boxes do not
 --   overlap at all.
 boxIntersection
@@ -262,3 +354,7 @@ boxIntersection u v = maybe mempty (uncurry fromCorners) $ do
   (vl, vh) <- getCorners v
   return (liftI2 max ul vl, liftI2 min uh vh)
 
+-- | Form the smallest bounding box containing the given two bounding
+--   boxes. This is a specialised version of 'mappend'.
+boxUnion :: (Additive v, Ord n) => BoundingBox v n -> BoundingBox v n -> BoundingBox v n
+boxUnion = mappend

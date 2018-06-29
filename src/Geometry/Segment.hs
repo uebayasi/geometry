@@ -35,17 +35,16 @@
 -- and manipulating segments, as well as a definition of segments with
 -- a fixed location (useful for backend implementors).
 --
--- Generally speaking, casual users of diagrams should not need this
--- module; the higher-level functionality provided by
--- "Diagrams.Trail", "Diagrams.TrailLike", and "Diagrams.Path" should
--- usually suffice.  However, directly manipulating segments can
--- occasionally be useful.
+-- Generally speaking, casual users should not need this module; the
+-- higher-level functionality provided by "Geometry.Trail" and
+-- "Geometry.Path" should usually suffice.  However, directly
+-- manipulating segments can occasionally be useful.
 --
 -----------------------------------------------------------------------------
 
 module Geometry.Segment
   (
-    -- * ClosedSegent
+    -- * Segments
     Segment (..)
   , straight
   , bezier3
@@ -53,13 +52,13 @@ module Geometry.Segment
 
   , HasSegments (..)
 
-  -- * Closing Segments
+  -- * Closing segments
   , ClosingSegment (..)
   , linearClosing
   , cubicClosing
   , closingSegment
 
-  -- * Fixed Segments
+  -- * Fixed segments
   , FixedSegment (..)
   , fixed
 
@@ -79,7 +78,8 @@ module Geometry.Segment
   , paramsTangentTo
   , splitAtParams
   , unsafeSplitAtParams
-  , colinear
+  , secondDerivAtParam
+  -- , collinear
   , segmentsEqual
   , segmentCrossings
   , linearCrossings
@@ -119,6 +119,7 @@ import           Data.Coerce
 import           Diagrams.Solve.Polynomial
 
 import           Geometry.Angle
+import           Geometry.Direction
 import           Geometry.Envelope
 import           Geometry.Located
 import           Geometry.Parametric
@@ -126,11 +127,9 @@ import           Geometry.Query
 import           Geometry.Space
 import           Geometry.Transform
 import           Geometry.TwoD.Transform
-import           Geometry.TwoD.Vector               hiding (e)
-
 
 ------------------------------------------------------------------------
--- Closed segments
+-- Segments
 ------------------------------------------------------------------------
 
 -- | The atomic constituents of the concrete representation currently
@@ -142,11 +141,20 @@ import           Geometry.TwoD.Vector               hiding (e)
 data Segment v n
   = Linear !(v n)
   | Cubic !(v n) !(v n) !(v n)
-  deriving (Functor, Eq)
+  deriving Functor
 
 type instance V (Segment v n) = v
 type instance N (Segment v n) = n
 type instance Codomain (Segment v n) = v
+
+------------------------------------------------------------
+-- Instances
+
+instance (Eq1 v, Eq n) => Eq (Segment v n) where
+  Linear v1      == Linear v2      = eq1 v1 v2
+  Cubic a1 b1 c1 == Cubic a2 b2 c2 = eq1 a1 a2 && eq1 b1 b2 && eq1 c1 c2
+  _              == _              = False
+  {-# INLINE (==) #-}
 
 instance Show1 v => Show1 (Segment v) where
   liftShowsPrec x y d seg = case seg of
@@ -216,6 +224,9 @@ instance (Serial1 v, Cereal.Serialize n) => Cereal.Serialize (Segment v n) where
   get = deserializeWith Cereal.get
   {-# INLINE get #-}
 
+------------------------------------------------------------
+-- Smart constructors
+
 -- | @'straight' v@ constructs a translationally invariant linear
 --   segment with direction and length given by the vector @v@.
 straight :: v n -> Segment v n
@@ -247,7 +258,7 @@ class HasSegments t where
   default offset :: (Additive (V t), Num (N t)) => t -> Vn t
   offset = foldlOf' segments (\off seg -> off ^+^ offset seg) zero
 
-  -- | The number of segments
+  -- | The number of segments.
   numSegments :: t -> Int
   numSegments = lengthOf segments
 
@@ -288,13 +299,23 @@ instance (Additive v, Num n) => Parametric (Segment v n) where
     where t' = 1-t
   {-# INLINE atParam #-}
 
-instance (Additive v, Num n) => Parametric (Tangent (Segment v n)) where
-  Tangent (Linear v) `atParam` _ = v
-  Tangent (Cubic c1 c2 c3) `atParam` t
+instance (Additive v, Num n) => Tangential (Segment v n) where
+  Linear v `tangentAtParam` _ = v
+  Cubic c1 c2 c3 `tangentAtParam` t
     =  (3*(3*t*t-4*t+1))*^ c1
    ^+^ (3*(2-3*t)*t)    *^ c2
    ^+^ (3*t*t)          *^ c3
-  {-# INLINE atParam #-}
+  {-# INLINE tangentAtParam #-}
+
+instance (Additive v, Num n) => TangentEndValues (Segment v n) where
+  tangentAtStart = \case
+    Linear v     -> v
+    Cubic c1 _ _ -> 3*^c1
+  {-# INLINE tangentAtStart #-}
+  tangentAtEnd = \case
+    Linear v      -> v
+    Cubic _ c2 c3 -> 3*^(c3 ^-^ c2)
+  {-# INLINE tangentAtEnd #-}
 
 instance Num n => DomainBounds (Segment v n)
 
@@ -322,12 +343,12 @@ instance (Additive v, Fractional n) => Sectionable (Segment v n) where
   {-# INLINE splitAtParam #-}
 
   reverseDomain (Linear x1)      = Linear (negated x1)
-  reverseDomain (Cubic c1 c2 c3) = Cubic (c2 ^-^ c3) (c1 ^-^ c3) (negated c2)
+  reverseDomain (Cubic c1 c2 c3) = Cubic (c2 ^-^ c3) (c1 ^-^ c3) (negated c3)
   {-# INLINE reverseDomain #-}
 
 instance (Additive v, Num n) => Reversing (Segment v n) where
   reversing (Linear x1)      = Linear (negated x1)
-  reversing (Cubic c1 c2 c3) = Cubic (c2 ^-^ c3) (c1 ^-^ c3) (negated c2)
+  reversing (Cubic c1 c2 c3) = Cubic (c2 ^-^ c3) (c1 ^-^ c3) (negated c3)
   {-# INLINE reversing #-}
 
 instance (Metric v, OrderedField n) => HasArcLength (Segment v n) where
@@ -343,9 +364,9 @@ instance (Metric v, OrderedField n) => HasArcLength (Segment v n) where
   arcLengthToParam m s _ | arcLength m s == 0 = 0.5
   arcLengthToParam m s@(Linear {}) len = len / arcLength m s
   arcLengthToParam m s@(Cubic {})  len
-    | len `K.elem` K.I (-m/2) (m/2) = 0
+    | len `K.member` K.I (-m/2) (m/2) = 0
     | len < 0              = - arcLengthToParam m (fst (splitAtParam s (-1))) (-len)
-    | len `K.elem` slen    = 1
+    | len `K.member` slen  = 1
     | len > K.sup slen     = 2 * arcLengthToParam m (fst (splitAtParam s 2)) len
     | len < K.sup llen     = (*0.5) $ arcLengthToParam m l len
     | otherwise            = (+0.5) . (*0.5)
@@ -354,11 +375,35 @@ instance (Metric v, OrderedField n) => HasArcLength (Segment v n) where
           llen  = arcLengthBounded (m/10) l
           slen  = arcLengthBounded m s
 
+-- | The second derivative of the parametric curve \(d^2 S(t) / d t^2\).
+--   This is similar to curvature except the curvature is the norm of the
+--   second derivative with respect to the segment length \(|d^2 \gamma(s)
+--   / d s^2|\).
+secondDerivAtParam :: (Additive v, Num n) => Segment v n -> n -> v n
+secondDerivAtParam s t = case s of
+  Linear _       -> zero
+  Cubic c1 c2 c3 -> (6*(3*t-2))*^c1 ^+^ (6-18*t)*^c2 ^+^ (6*t)*^c3
+
+-- It's been a while since I've looked at this, not quite sure why it's
+-- commented out. Something to do with PosInf I think.
+
+-- curvatureAtParam :: (Additive v, Floating n) => Segment v n -> n -> n
+-- curvatureAtParam s t = sqrt (curvatureSqAtParam s t)
+
+-- curvatureSqAtParam :: (Additive v, Fractional n) => Segment v n -> n -> PosInf n
+-- curvatureSqAtParam s t = case s of
+--   Linear _ -> zero
+--   Cubic {} -> (qs' * qs'' - (s' `dot` s'')^(2::Int)) / qs'^(3::Int)
+--   where
+--     s'   = s `tangentAtParam` t
+--     s''  = s `secondDerivAtParam` t
+--     qs'  = quadrance s'
+--     qs'' = quadrance s''
+
 -- Envelopes -----------------------------------------------------------
 
 -- | Envelope specialised to cubic segments used for 'segmentEnvelope'.
---   This definition  specialised to @V2 Double@ and @V3 Double@ and is
---   markered as @INLINEABLE@ so you can specialise for your own types.
+--   This definition specialised to @V2 Double@ and @V3 Double@.
 cubicEnvelope :: (Metric v, Floating n, Ord n) => v n -> v n -> v n -> v n -> Interval n
 cubicEnvelope !c1 !c2 !c3 !v
   | l > 0     = I 0 u
@@ -375,8 +420,8 @@ cubicEnvelope !c1 !c2 !c3 !v
 {-# SPECIALISE cubicEnvelope :: V3 Double -> V3 Double -> V3 Double -> V3 Double -> Interval Double #-}
 
 -- | Envelope of single segment without the 'Envelope' wrapper.
-segmentEnvelope :: (Metric v, OrderedField n) => Segment v n -> v n -> Interval n
-segmentEnvelope !s = \v -> case s of
+segmentEnvelope :: (Metric v, OrderedField n) => Segment v n -> Direction v n -> Interval n
+segmentEnvelope !s = \(Dir v) -> case s of
   Linear l       -> let !x = l `dot` v
                     in  if x < 0 then I x 0 else I 0 x
   Cubic c1 c2 c3 -> cubicEnvelope c1 c2 c3 v
@@ -401,7 +446,7 @@ envelopeOf
 envelopeOf l = \ !t !w ->
   let f (Pair p e) !seg = Pair (p .+^ offset seg) e'
         where
-          e' = combine e (moveBy (view _Point p `dot` w) $ segmentEnvelope seg w)
+          e' = combine e (moveBy (view _Point p `dot` w) $ segmentEnvelope seg (Dir w))
           --
           combine (I a1 b1) (I a2 b2) = I (min a1 a2) (max b1 b2)
           moveBy n (I a b)            = I (a + n) (b + n)
@@ -414,7 +459,7 @@ envelopeOf l = \ !t !w ->
 
 -- trace ---------------------------------------------------------------
 
--- | Calculate the envelope using a fold over segments.
+-- | Calculate the trace using a fold over segments.
 traceOf
   :: (InSpace V2 n t, OrderedField n)
   => Fold t (Segment V2 n)
@@ -426,31 +471,40 @@ traceOf
 traceOf fold p0 trail p v@(V2 !vx !vy) = view _3 $ foldlOf' fold f (p0,False,mempty :: Seq n) trail
   where
     !theta = atan2A' vy vx
-    -- !rot   = rotation theta
-    !t2    = rotation theta <> translation (p^._Point) <> scaling (1/norm v)
+    !t2    = scaling (1/norm v)
+          <> rotation (negated theta)
+          <> translation (negated $ p^._Point)
 
     f (!q,!_nearStart,!ts) (Linear w)
-      | x1 == 0 && x2 /= 0 = (q .+^ w, False, ts) -- parallel
-      | otherwise          = (q .+^ w, nearEnd, ts :> t)
+      | parallel || not inRange = (q .+^ w, False, ts)
+      | otherwise               = (q .+^ w, nearEnd, ts :> tv)
       where
-        t  = x3 / x1
-        x1 =  v `cross2` w
-        x2 = pq `cross2` v
-        x3 = pq `cross2` w
+        parallel = x1 == 0 && x2 /= 0
+        nearEnd  = tw > 0.999
+        inRange  = tw >= 0 && tw <= 1.001
+        --
+        tv = x3 / x1
+        tw = x2 / x1
+        --
+        x1 =  v `crossZ` w
+        x2 = pq `crossZ` v
+        x3 = pq `crossZ` w
         pq  = q .-. p
-        nearEnd = t > 0.999
 
     f (q,nearStart, ts) (Cubic c1 c2 c3) = (q .+^ c3, nearEnd, ts <> Seq.fromList ts')
       where
-        qy = papply t2 q ^. _y
-        y1 = apply t2 c1 ^. _y
-        y2 = apply t2 c2 ^. _y
-        y3 = apply t2 c3 ^. _y
+        P (V2 qx qy)  = papply t2 q
+        c1'@(V2 _ y1) = apply t2 c1
+        c2'@(V2 _ y2) = apply t2 c2
+        c3'@(V2 _ y3) = apply t2 c3
         --
         a  =  3*y1 - 3*y2 + y3
         b  = -6*y1 + 3*y2
         c  =  3*y1
         d  =  qy
+
+        tcs = filter (liftA2 (&&) (>= startLooking) (<= 1.0001)) (cubForm' 1e-8 a b c d)
+        ts' = map ((+qx) . view _x . atParam (Cubic c1' c2' c3')) tcs
 
         -- if there was an intersecion near the end of the previous
         -- segment, don't look for an intersecion at the beggining of
@@ -458,12 +512,11 @@ traceOf fold p0 trail p v@(V2 !vx !vy) = view _3 $ foldlOf' fold f (p0,False,mem
         startLooking
           | nearStart = 0.0001
           | otherwise = 0
-        ts' = filter (liftA2 (&&) (>= startLooking) (<= 1.0001)) (cubForm' 1e-8 a b c d)
 
         -- if there's an intersection near the end of the segment, we
         -- don't look for an intersecion near the start of the next
         -- segment
-        nearEnd = any (>0.9999) ts'
+        nearEnd = any (>0.9999) tcs
 {-# INLINE traceOf #-}
 
 -- crossings -----------------------------------------------------------
@@ -481,13 +534,13 @@ traceOf fold p0 trail p v@(V2 !vx !vy) = view _3 $ foldlOf' fold f (p0,False,mem
 --   'Located' 'Loops'.
 --
 -- @
--- 'sample' :: 'Path' 'V2' 'Double'                  -> 'Point' 'V2' 'Double' -> 'Crossings'
--- 'sample' :: 'Located' ('Trail' 'V2' 'Double')       -> 'Point' 'V2' 'Double' -> 'Crossings'
--- 'sample' :: 'Located' ('Trail'' 'Loop' 'V2' 'Double') -> 'Point' 'V2' 'Double' -> 'Crossings'
+-- 'sample' :: 'Geometry.Path.Path' 'V2' 'Double'            -> 'Point' 'V2' 'Double' -> 'Crossings'
+-- 'sample' :: 'Located' ('Geometry.Trail.Loop' 'V2' 'Double')  -> 'Point' 'V2' 'Double' -> 'Crossings'
+-- 'sample' :: 'Located' ('Geometry.Trail.Trail' 'V2' 'Double') -> 'Point' 'V2' 'Double' -> 'Crossings'
 -- @
 --
 --   Note that 'Line's have no inside or outside, so don't contribute
---   crossings
+--   crossings.
 newtype Crossings = Crossings Int
   deriving (Show, Eq, Ord, Num, Enum, Real, Integral)
 
@@ -507,9 +560,9 @@ instance Monoid Crossings where
 --   (as opposed to loops), regardless of the winding number.
 --
 -- @
--- 'isInsideWinding' :: 'Path' 'V2' 'Double'                  -> 'Point' 'V2' 'Double' -> 'Bool'
--- 'isInsideWinding' :: 'Located' ('Trail' 'V2' 'Double')       -> 'Point' 'V2' 'Double' -> 'Bool'
--- 'isInsideWinding' :: 'Located' ('Trail'' 'Loop' 'V2' 'Double') -> 'Point' 'V2' 'Double' -> 'Bool'
+-- 'isInsideWinding' :: 'Geometry.Path.Path' 'V2' 'Double'            -> 'Point' 'V2' 'Double' -> 'Bool'
+-- 'isInsideWinding' :: 'Located' ('Geometry.Trail.Loop' 'V2' 'Double')  -> 'Point' 'V2' 'Double' -> 'Bool'
+-- 'isInsideWinding' :: 'Located' ('Geometry.Trail.Trail' 'V2' 'Double') -> 'Point' 'V2' 'Double' -> 'Bool'
 -- @
 isInsideWinding :: HasQuery t Crossings => t -> Point (V t) (N t) -> Bool
 isInsideWinding t = (/= 0) . sample t
@@ -523,9 +576,9 @@ isInsideWinding t = (/= 0) . sample t
 --   the number of crossings.
 --
 -- @
--- 'isInsideEvenOdd' :: 'Path' 'V2' 'Double'                  -> 'Point' 'V2' 'Double' -> 'Bool'
--- 'isInsideEvenOdd' :: 'Located' ('Trail' 'V2' 'Double')       -> 'Point' 'V2' 'Double' -> 'Bool'
--- 'isInsideEvenOdd' :: 'Located' ('Trail'' 'Loop' 'V2' 'Double') -> 'Point' 'V2' 'Double' -> 'Bool'
+-- 'isInsideEvenOdd' :: 'Geometry.Path.Path' 'V2' 'Double'            -> 'Point' 'V2' 'Double' -> 'Bool'
+-- 'isInsideEvenOdd' :: 'Located' ('Geometry.Trail.Loop' 'V2' 'Double')  -> 'Point' 'V2' 'Double' -> 'Bool'
+-- 'isInsideEvenOdd' :: 'Located' ('Geometry.Trail.Trail' 'V2' 'Double') -> 'Point' 'V2' 'Double' -> 'Bool'
 -- @
 isInsideEvenOdd :: HasQuery t Crossings => t -> Point (V t) (N t) -> Bool
 isInsideEvenOdd t = odd . sample t
@@ -555,7 +608,7 @@ linearCrossings q@(P (V2 _ qy)) a@(P (V2 _ ay)) v@(V2 _ vy)
   | by <= qy && ay > qy && not isLeft = -1
   | otherwise                         =  0
   where
-    isLeft = cross2 v (q .-. a) > 0
+    isLeft = crossZ v (q .-. a) > 0
     by = ay + vy
 {-# SPECIALISE linearCrossings :: Point V2 Double -> Point V2 Double -> V2 Double -> Crossings #-}
 
@@ -634,20 +687,11 @@ unsafeSplitAtParams seg0 ts0 = build $ \(|>) z ->
   -- does fusion actually help here?
   -- would probably be better if ts was given as a (unboxed) vector
 
--- | Return False if some points fall outside a line with a thickness of
---   the given tolerance.  fat line calculation taken from the
---   bezier-clipping algorithm (Sederberg)
-colinear :: OrderedField n => n -> Segment V2 n -> Bool
-colinear _   Linear {} = True
-colinear eps (Cubic c1 c2 c3) = dmax - dmin < eps
-  where
-    d1 = distance c1 c3
-    d2 = distance c2 c3
-    (dmin, dmax) | d1*d2 > 0 = (3/4 * minimum [0, d1, d2],
-                                3/4 * maximum [0, d1, d2])
-                 | otherwise = (4/9 * minimum [0, d1, d2],
-                                4/9 * maximum [0, d1, d2])
-{-# INLINE colinear #-}
+-- | Checks whether the points on the cubic segment lie in a straight
+--   line.
+-- collinear :: OrderedField n => n -> Segment V2 n -> Bool
+-- collinear _   Linear {}        = True
+-- collinear eps (Cubic c1 c2 c3) = undefined
 
 -- | Check if two segments are approximately equal.
 segmentsEqual
@@ -661,10 +705,10 @@ segmentsEqual eps (Cubic a1 a2 a3) (Cubic b1 b2 b3)
   | distance a1 b1 < eps &&
     distance a2 b2 < eps &&
     distance a3 b3 < eps = True
-  -- compare if both are colinear and close together
+  -- compare if both are collinear and close together
   -- - | dist < eps                  &&
-  --   colinear ((eps-dist)/2) cb1 &&
-  --   colinear ((eps-dist)/2) cb2 = True
+  --   collinear ((eps-dist)/2) cb1 &&
+  --   collinear ((eps-dist)/2) cb2 = True
   | otherwise = False
   -- where dist = max (abs $ ld b0) (abs $ ld b3)
   --       ld   = distance lineDistance (Line a0 a3)
@@ -674,8 +718,8 @@ segmentsEqual _ _ _ = undefined
 -- Closing segments
 ------------------------------------------------------------------------
 
--- | A ClosingSegment is use to determine how to close a loop. A linear
---   closing means close a trail with a straight line. A cubic closing
+-- | A ClosingSegment is used to determine how to close a loop. A linear
+--   closing means to close a trail with a straight line. A cubic closing
 --   segment means close the trail with a cubic bezier with control
 --   points c1 and c2.
 data ClosingSegment v n = LinearClosing | CubicClosing !(v n) !(v n)
@@ -683,6 +727,12 @@ data ClosingSegment v n = LinearClosing | CubicClosing !(v n) !(v n)
 
 type instance V (ClosingSegment v n) = v
 type instance N (ClosingSegment v n) = n
+
+instance (Eq1 v, Eq n) => Eq (ClosingSegment v n) where
+  LinearClosing      == LinearClosing      = True
+  CubicClosing b1 c1 == CubicClosing b2 c2 = eq1 b1 b2 && eq1 c1 c2
+  _                  ==     _              = False
+  {-# INLINE (==) #-}
 
 instance Show1 v => Show1 (ClosingSegment v) where
   liftShowsPrec x y d = \case
@@ -699,7 +749,6 @@ instance (Metric v, Foldable v, OrderedField n) => Transformable (ClosingSegment
   transform _ LinearClosing        = LinearClosing
   {-# INLINE transform #-}
 
--- Not strictly correct
 instance NFData (v n) => NFData (ClosingSegment v n) where
   rnf = \case
     LinearClosing      -> ()
@@ -822,13 +871,11 @@ instance (Metric v, OrderedField n) => HasSegments (FixedSegment v n) where
   numSegments _ = 1
   {-# INLINE numSegments #-}
 
--- Not strictly correct
-instance (Foldable v, NFData n) => NFData (FixedSegment v n) where
+instance NFData (v n) => NFData (FixedSegment v n) where
   rnf = \case
-    FLinear p1 p2      -> rnfVec p1 `seq` rnfVec p2
-    FCubic p1 p2 p3 p4 -> rnfVec p1 `seq` rnfVec p2 `seq` rnfVec p3
-                          `seq` rnfVec p4
-    where rnfVec = foldMap rnf
+    FLinear p1 p2      -> rnf p1 `seq` rnf p2
+    FCubic p1 p2 p3 p4 -> rnf p1 `seq` rnf p2 `seq` rnf p3
+                          `seq` rnf p4
   {-# INLINE rnf #-}
 
 instance Hashable1 v => Hashable1 (FixedSegment v) where
@@ -876,7 +923,7 @@ instance (Serial1 v, Cereal.Serialize n) => Cereal.Serialize (FixedSegment v n) 
   get = deserializeWith Cereal.get
   {-# INLINE get #-}
 
--- | Fixed segments and a located segments are isomorphic.
+-- | Fixed segments and located segments are isomorphic.
 fixed :: (Additive v, Num n) => Iso' (FixedSegment v n) (Located (Segment v n))
 fixed = iso fromFixedSeg mkFixedSeg
 {-# INLINE fixed #-}

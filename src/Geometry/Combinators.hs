@@ -81,7 +81,7 @@ import           Linear.V2
 --   identity element, in which case the second object is returned
 --   unchanged).
 --
---   <<diagrams/src_Diagrams_Combinators_besideEx.svg#diagram=besideEx&height=200>>
+--   <<diagrams/src_Geometry_Combinators_besideEx.svg#diagram=besideEx&height=200>>
 --
 --   > besideEx = beside (r2 (20,30))
 --   >                   (circle 1 # fc orange)
@@ -114,8 +114,9 @@ beside v d1 d2 = d1 <> juxtapose v d1 d2
 --   from the first.  The local origin of the resulting combined
 --   diagram is the same as the local origin of the first.  See the
 --   documentation of 'beside' for more information.
-atDirection :: (InSpace v n a, Metric v, Floating n, Juxtaposable a, Semigroup a)
-            => Direction v n -> a -> a -> a
+atDirection
+  :: (Juxtaposable a, Semigroup a)
+  => Direction (V a) (N a) -> a -> a -> a
 atDirection = beside . fromDirection
 
 ------------------------------------------------------------
@@ -127,19 +128,19 @@ atDirection = beside . fromDirection
 --   @ys@ is positioned beside @x@ /without/ reference to the other
 --   objects in @ys@, so this is not the same as iterating 'beside'.
 --
---   <<diagrams/src_Diagrams_Combinators_appendsEx.svg#diagram=appendsEx&width=200>>
+--   <<diagrams/src_Geometry_Combinators_appendsEx.svg#diagram=appendsEx&width=200>>
 --
 --   > appendsEx = appends c (zip (iterateN 6 (rotateBy (1/6)) unitX) (repeat c))
 --   >             # centerXY # pad 1.1
 --   >   where c = circle 1
-appends :: (Juxtaposable a, Monoid' a) => a -> [(Vn a,a)] -> a
-appends d1 apps = d1 <> mconcat (map (\(v,d) -> juxtapose v d1 d) apps)
+appends :: (Metric (V a), Floating (N a), Juxtaposable a, Monoid' a) => a -> [(Vn a,a)] -> a
+appends d1 apps = d1 <> mconcat (map (\(v,d) -> juxtapose (signorm v) d1 d) apps)
 
 -- | Position things absolutely: combine a list of objects
 --   (e.g. diagrams or paths) by assigning them absolute positions in
 --   the vector space of the combined object.
 --
---   <<diagrams/src_Diagrams_Combinators_positionEx.svg#diagram=positionEx&height=300>>
+--   <<diagrams/src_Geometry_Combinators_positionEx.svg#diagram=positionEx&height=300>>
 --
 --   > positionEx = position (zip (map mkPoint [-3, -2.8 .. 3]) (repeat spot))
 --   >   where spot      = circle 0.2 # fc black
@@ -159,13 +160,21 @@ atPoints ps as = position $ zip ps as
 --   of the result will be the same as the local origin of the first
 --   object.
 --
---   See also 'cat'', which takes an extra options record allowing
+--   See also 'sep', which takes a distance parameter allowing
 --   certain aspects of the operation to be tweaked.
+--
+--   See also 'Geometry.TwoD.Combinators.hcat' and
+--   'Geometry.TwoD.Combinators.vcat'
 cat
   :: (InSpace v n a, Enveloped a, Monoid a, HasOrigin a)
   => v n -> [a] -> a
 cat v = sep v 0
 
+-- | Similar to 'cat' but with a gap parameter which is used as the
+--   distance between successive diagrams.
+--
+--   See also 'Geometry.TwoD.Combinators.hsep' and
+--   'Geometry.TwoD.Combinators.vsep'
 sep
   :: (InSpace v n t, Monoid t, Enveloped t, HasOrigin t)
   => v n -> n -> [t] -> t
@@ -188,6 +197,8 @@ sep (signorm -> v) s (t0:ts) = snd $ foldl' f (n0, t0) ts
 --
 --   >>> sepEven unitX $ map regPoly [3..7]
 --
+--   See also 'Geometry.TwoD.Combinators.hsepEven' and
+--   'Geometry.TwoD.Combinators.vsepEven'
 sepEven
   :: (InSpace v n t, Metric v, Floating n, Monoid t, HasOrigin t)
   => v n -> n -> [t] -> t

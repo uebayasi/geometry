@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE UndecidableInstances  #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Geometry.Juxtapose
@@ -42,13 +42,19 @@ class Juxtaposable a where
   --   this operation does not /combine/ @a1@ and @a2@ in any way.)
   juxtapose :: Vn a -> a -> a -> a
 
+-- XXX Is there a reason not to move this into the class with a
+-- default method signature specification?
+
 -- | Default implementation of 'juxtapose' for things which are
 --   instances of 'Enveloped' and 'HasOrigin'.  If either envelope is
 --   empty, the second object is returned unchanged.
 juxtaposeDefault :: (Enveloped a, HasOrigin a) => Vn a -> a -> a -> a
 juxtaposeDefault = \v a1 a2 ->
-  -- the distance a2 needs to be moved by such the hyperplanes between
+  -- the distance a2 needs to be translated such that the hyperplanes between
   -- a1 and a2 are touching
+
+  -- XXX this is not correct given the semantics of extent.  Should
+  -- juxtapose take a Direction or a vector?  Or should we normalize?
   let md = do
         (_,d1) <- extent v a1
         (d2,_) <- extent v a2
@@ -77,5 +83,3 @@ instance (Enveloped b, HasOrigin b, Ord b) => Juxtaposable (S.Set b) where
 instance Juxtaposable b => Juxtaposable (a -> b) where
   juxtapose v f1 f2 b = juxtapose v (f1 b) (f2 b)
 
--- instance Juxtaposable a => Juxtaposable (Measured n a) where
---   juxtapose v = liftA2 (juxtapose v)

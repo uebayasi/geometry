@@ -11,13 +11,13 @@
 module Geometry.TwoD.Vector
   ( -- * Special 2D vectors
     unitX, unitY, unit_X, unit_Y
-  , xDir, yDir
+  , xDir, yDir, x_Dir, y_Dir
 
     -- * Converting between vectors and angles
   , angleV, angleDir, e, signedAngleBetween, signedAngleBetweenDirs
 
     -- * 2D vector utilities
-  , perp, leftTurn, cross2
+  , perp, leftTurn, crossZ
 
   ) where
 
@@ -47,24 +47,32 @@ unitY = zero & _y .~ 1
 unit_Y :: (R2 v, Additive v, Num n) => v n
 unit_Y = zero & _y .~ (-1)
 
--- | A 'Direction' pointing in the X direction.
+-- | A 'Direction' pointing in the positive X direction.
 xDir :: (R1 v, Additive v, Num n) => Direction v n
-xDir = dir unitX
+xDir = Dir unitX
 
--- | A 'Direction' pointing in the Y direction.
+-- | A 'Direction' pointing in the positive Y direction.
 yDir :: (R2 v, Additive v, Num n) => Direction v n
-yDir = dir unitY
+yDir = Dir unitY
 
--- | A direction at a specified angle counter-clockwise from the 'xDir'.
+-- | A 'Direction' pointing in the negative X direction.
+x_Dir :: (R1 v, Additive v, Num n) => Direction v n
+x_Dir = Dir unit_X
+
+-- | A 'Direction' pointing in the negative Y direction.
+y_Dir :: (R2 v, Additive v, Num n) => Direction v n
+y_Dir = Dir unit_Y
+
+-- | A direction at a specified angle counterclockwise from the 'xDir'.
 angleDir :: Floating n => Angle n -> Direction V2 n
-angleDir = dir . angleV
+angleDir = Dir . angleV
 
--- | A unit vector at a specified angle counter-clockwise from the
+-- | A unit vector at a specified angle counterclockwise from the
 --   positive x-axis
 angleV :: Floating n => Angle n -> V2 n
 angleV = angle . view rad
 
--- | A unit vector at a specified angle counter-clockwise from the
+-- | A unit vector at a specified angle counterclockwise from the
 --   positive X axis.
 e :: Floating n => Angle n -> V2 n
 e = angleV
@@ -74,10 +82,6 @@ e = angleV
 --   from that of @v1@ by adding an angle 0 <= theta <= tau/2).
 leftTurn :: (Num n, Ord n) => V2 n -> V2 n -> Bool
 leftTurn v1 v2 = (v1 `dot` perp v2) < 0
-
--- | Cross product on vectors in R2.
-cross2 :: Num n => V2 n -> V2 n -> n
-cross2 (V2 x1 y1) (V2 x2 y2) = x1 * y2 - y1 * x2
 
 -- | Signed angle between two vectors. Currently defined as
 --
@@ -91,3 +95,4 @@ signedAngleBetween u v = (u ^. _theta) ^-^ (v ^. _theta)
 -- | Same as 'signedAngleBetween' but for 'Directions's.
 signedAngleBetweenDirs :: RealFloat n => Direction V2 n -> Direction V2 n -> Angle n
 signedAngleBetweenDirs u v = (u ^. _theta) ^-^ (v ^. _theta)
+

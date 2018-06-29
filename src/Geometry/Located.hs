@@ -75,18 +75,16 @@ import           GHC.Generics         (Generic)
 --
 --   Much of the utility of having a concrete type for the @Located@
 --   concept lies in the type class instances we can give it.  The
---   'HasOrigin', 'Transformable', 'Enveloped', 'Traced', and
---   'TrailLike' instances are particularly useful; see the documented
---   instances below for more information.
+--   'HasOrigin', 'Transformable', 'HasQuery', 'Enveloped', 'Traced',
+--   and 'TrailLike' instances are particularly useful; see the
+--   documented instances below for more information.
 data Located a = Loc
   { loc   :: !(Point (V a) (N a))
     -- ^ Project out the location of a @Located@ value.
   , unLoc :: !a
     -- ^ Project the value of type @a@ out of a @Located a@, discarding
-    -- the location.
+    --   the location.
   } deriving (Typeable, Generic)
-
--- instance (Serialize a, Serialize (V a (N a))) => Serialize (Located a)
 
 infix 5 `at`
 -- | Construct a @Located a@ from a value of type @a@ and a location.
@@ -119,7 +117,7 @@ located f (Loc p a) = Loc p <$> f a
 --   stay the same.
 --
 --   (Technically, one can say that for every vector space @v@,
---   @Located@ is a little-f (endo)functor on the category of types
+--   @Located@ is an endofunctor on the category of types
 --   with associated vector space @v@; but that is not covered by the
 --   standard @Functor@ class.)
 mapLoc :: SameSpace a b => (a -> b) -> Located a -> Located b
@@ -128,8 +126,6 @@ mapLoc f (Loc p a) = Loc p (f a)
 
 deriving instance (Eq   (V a (N a)), Eq a  ) => Eq   (Located a)
 deriving instance (Ord  (V a (N a)), Ord a ) => Ord  (Located a)
-
--- (Show1 (V a), Show (n a)) => Show (Located a)
 
 instance (Show1 (V a), Show (N a), Show a) => Show (Located a) where
   showsPrec d (Loc p a) = showParen (d > 5) $
@@ -168,6 +164,8 @@ instance Enveloped a => Enveloped (Located a) where
   getEnvelope (Loc p a) = moveTo p (getEnvelope a)
   {-# INLINE getEnvelope #-}
 
+-- | The query of a @Located a@ is the query of the @a@, translated to
+--   the location.
 instance (Additive (V a), Num (N a), HasQuery a m) => HasQuery (Located a) m where
   getQuery (Loc p a) = moveTo p (getQuery a)
   {-# INLINE getQuery #-}
@@ -179,9 +177,6 @@ instance Enveloped a => Juxtaposable (Located a) where
 --   translated to the location.
 instance (Traced a, Num (N a)) => Traced (Located a) where
   getTrace (Loc p a) = moveTo p (getTrace a)
-
--- instance Qualifiable a => Qualifiable (Located a) where
---   n .>> Loc p a = Loc p (n .>> a)
 
 instance (NFData (Vn a), NFData a) => NFData (Located a) where
   rnf (Loc p a) = rnf p `seq` rnf a
