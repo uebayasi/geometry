@@ -67,7 +67,7 @@ unp3 (P (V3 x y z)) = (x,y,z)
 p3Iso :: Iso' (P3 n) (n, n, n)
 p3Iso = iso unp3 p3
 
--- | Curried version of `r3`.
+-- | Curried version of `p3`.
 mkP3 :: n -> n -> n -> P3 n
 mkP3 x y z = p3 (x, y, z)
 
@@ -77,11 +77,15 @@ type instance N (V3 n) = n
 instance Num n => Transformable (V3 n) where
   transform = apply
 
+-- | An isomorphism between 3D vectors and their representation in
+--   spherical coordinates.
 r3SphericalIso :: RealFloat n => Iso' (V3 n) (n, Angle n, Angle n)
 r3SphericalIso = iso
   (\v@(V3 x y z) -> (norm v, atan2A y x, acosA (z / norm v)))
   (\(r,θ,φ)   -> V3 (r * cosA θ * sinA φ) (r * sinA θ * sinA φ) (r * cosA φ))
 
+-- | An isomorphism between 3D vectors and their representation in
+--   cylindrical coordinates.
 r3CylindricalIso :: RealFloat n => Iso' (V3 n) (n, Angle n, n)
 r3CylindricalIso = iso
   (\(V3 x y z) -> (sqrt $ x*x + y*y, atan2A y x, z))

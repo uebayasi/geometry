@@ -19,7 +19,9 @@
 -----------------------------------------------------------------------------
 
 module Geometry.ThreeD.Camera
-  ( Camera  -- do not export constructor
+  (
+  -- * Cameras
+    Camera  -- do not export constructor
   , CameraLens (..)
   , cameraLocation
   , cameraAngle
@@ -27,14 +29,14 @@ module Geometry.ThreeD.Camera
   , cameraLoc
   , mm50Camera
 
-  -- | Perspective lens
+  -- * Perspective lens
   , PerspectiveLens(..)
   , mm50
   , mm50Wide
   , mm50Narrow
   , fovx
 
-  -- | Orthographic lens
+  -- * Orthographic lens
   , OrthoLens(..)
   , orthoBounds
   -- , horizontalFieldOfView, verticalFieldOfView
@@ -45,6 +47,7 @@ module Geometry.ThreeD.Camera
   -- , aspect, camAspect
   , camForwardRight
   , camForward
+  , camUp
   , cameraLens
   )
   where
@@ -58,13 +61,17 @@ import           Geometry.Space
 import           Geometry.ThreeD.Transform
 import           Geometry.ThreeD.Types
 
-import           Linear.Projection
-import           Linear.Vector
 import           Linear.Matrix             (M44, mkTransformationMat, transpose,
                                             (!*))
+import           Linear.Projection
+import           Linear.Vector
 
--- Parameterize Camera on the lens type, so that Backends can express which
--- lenses they handle.
+-- | A @Camera@ specifies a 3D viewpoint for rendering.  It is
+--   parameterized on the lens type, so backends can express which
+--   lenses they handle.
+--
+--   Note that the constructor is intentionally not exported; to
+--   construct a @Camera@, XXX?
 data Camera l n = Camera
   { cameraLocation :: !(P3 n)
   , cameraAngle    :: !(Euler n)
@@ -111,8 +118,8 @@ cameraLoc :: Lens' (Camera l n) (P3 n)
 cameraLoc f cam = f (cameraLocation cam) <&> \p -> cam {cameraLocation = p}
 
 instance CameraLens l => CameraLens (Camera l) where
-  aspect = aspect . camLens
-  lensProjection = lensProjection . camLens
+  aspect                = aspect                . camLens
+  lensProjection        = lensProjection        . camLens
   inverseLensProjection = inverseLensProjection . camLens
 
 -- Perspective ---------------------------------------------------------
@@ -201,6 +208,9 @@ camForwardRight cam = (fw, V3 cy 0 (-sy))
     sp = sinA p
     cp = cosA p
 {-# INLINE camForwardRight #-}
+
+camUp :: RealFloat n => Lens' (Camera l n) (V3 n)
+camUp f (Camera loc angle up l) = f up <&> \up' -> Camera loc angle up' l
 
 camForward :: RealFloat n => Lens' (Camera l n) (V3 n)
 camForward f cam = f (fst $ camForwardRight cam) <&> \v ->

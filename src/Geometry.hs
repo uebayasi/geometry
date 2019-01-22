@@ -49,6 +49,7 @@ module Geometry
   , module Geometry.TwoD.Vector
 
     -- * ThreeD
+  , module Geometry.ThreeD.Camera
   , module Geometry.ThreeD.Combinators
   , module Geometry.ThreeD.Size
   , module Geometry.ThreeD.Shapes
@@ -71,13 +72,14 @@ import           Geometry.HasOrigin
 import           Geometry.Juxtapose
 import           Geometry.Located
 import           Geometry.Parametric
-import           Geometry.Path
+import           Geometry.Path               hiding (pathPoints)
 import           Geometry.Points
 import           Geometry.Query
 import           Geometry.Segment
 import           Geometry.Size               hiding (SizeSpec (..))
 import           Geometry.Size               (SizeSpec)
 import           Geometry.Space
+import           Geometry.ThreeD.Camera
 import           Geometry.ThreeD.Combinators
 import           Geometry.ThreeD.Shapes
 import           Geometry.ThreeD.Size
@@ -86,7 +88,8 @@ import           Geometry.ThreeD.Types
 import           Geometry.ThreeD.Vector
 import           Geometry.Trace              hiding (Trace (..))
 import           Geometry.Trace              (Trace)
-import           Geometry.Trail
+import           Geometry.Trail              hiding (linePoints, loopPoints,
+                                              trailPoints)
 import           Geometry.Transform          hiding (Transformation (..))
 import           Geometry.Transform          (Transformation)
 import           Geometry.TwoD.Arc
