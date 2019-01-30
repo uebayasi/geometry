@@ -15,7 +15,6 @@
 
 module Geometry.TwoD.Ellipse
     (
-      -- * Ellipse and circle diagrams
       unitCircle
     , circle
     , ellipse
@@ -27,8 +26,8 @@ import           Geometry.Space
 import           Geometry.Angle
 import           Geometry.Located        (at)
 import           Geometry.Trail
-import           Geometry.TwoD.Arc
 import           Geometry.Transform
+import           Geometry.TwoD.Arc
 import           Geometry.TwoD.Transform
 import           Geometry.TwoD.Types
 import           Geometry.TwoD.Vector    (xDir)
@@ -38,7 +37,7 @@ unitCircle :: (InSpace V2 n t, FromTrail t, OrderedField n) => t
 unitCircle = fromLocTrail $ glueTrail (arcT xDir fullTurn) `at` p2 (1,0)
 
 -- | A circle of the given radius, centered at the origin.  As a path,
---   it begins at (r,0).
+--   it begins at @(r,0)@.
 circle :: (InSpace V2 n t, FromTrail t, OrderedField n) => n -> t
 circle d = fromLocTrail $ scale d unitCircle
 
