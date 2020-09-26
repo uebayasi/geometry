@@ -46,7 +46,7 @@ import           Control.Lens                (AReview, Iso', Lens', iso, over,
                                               review, (^.))
 import           Data.Fixed
 import           Data.Monoid                 hiding ((<>))
-import           Data.Semigroup
+import qualified Data.Semigroup              as Sem
 import           GHC.Generics                (Generic, Generic1)
 import           Prelude
 import           Text.Read
@@ -160,12 +160,12 @@ instance Additive Angle where
   zero = pure 0
   {-# INLINE zero #-}
 
-instance Num n => Semigroup (Angle n) where
+instance Num n => Sem.Semigroup (Angle n) where
   (<>) = (^+^)
   {-# INLINE (<>) #-}
 
 instance Num n => Monoid (Angle n) where
-  mappend = (<>)
+  mappend = (Sem.<>)
   mempty  = Radians 0
 
 -- | The radian measure of an 'Angle' @a@ can be accessed as @a '^.'

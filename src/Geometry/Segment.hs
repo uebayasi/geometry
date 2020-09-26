@@ -101,7 +101,7 @@ import           Data.Functor.Classes
 import           Data.Hashable
 import           Data.Hashable.Lifted
 import           Data.List                          (nub, sort)
-import           Data.Semigroup
+import qualified Data.Semigroup                     as Sem
 import           Data.Sequence                      (Seq)
 import qualified Data.Sequence                      as Seq
 import qualified Data.Serialize                     as Cereal
@@ -472,8 +472,8 @@ traceOf fold p0 trail p v@(V2 !vx !vy) = view _3 $ foldlOf' fold f (p0,False,mem
   where
     !theta = atan2A' vy vx
     !t2    = scaling (1/norm v)
-          <> rotation (negated theta)
-          <> translation (negated $ p^._Point)
+      Sem.<> rotation (negated theta)
+      Sem.<> translation (negated $ p^._Point)
 
     f (!q,!_nearStart,!ts) (Linear w)
       | parallel || not inRange = (q .+^ w, False, ts)
@@ -491,7 +491,7 @@ traceOf fold p0 trail p v@(V2 !vx !vy) = view _3 $ foldlOf' fold f (p0,False,mem
         x3 = pq `crossZ` w
         pq  = q .-. p
 
-    f (q,nearStart, ts) (Cubic c1 c2 c3) = (q .+^ c3, nearEnd, ts <> Seq.fromList ts')
+    f (q,nearStart, ts) (Cubic c1 c2 c3) = (q .+^ c3, nearEnd, ts Sem.<> Seq.fromList ts')
       where
         P (V2 qx qy)  = papply t2 q
         c1'@(V2 _ y1) = apply t2 c1
@@ -544,14 +544,14 @@ traceOf fold p0 trail p v@(V2 !vx !vy) = view _3 $ foldlOf' fold f (p0,False,mem
 newtype Crossings = Crossings Int
   deriving (Show, Eq, Ord, Num, Enum, Real, Integral)
 
-instance Semigroup Crossings where
+instance Sem.Semigroup Crossings where
   (<>) = coerce ((+) :: Int -> Int -> Int)
   {-# INLINE (<>) #-}
 
 instance Monoid Crossings where
   mempty  = Crossings 0
   {-# INLINE mempty  #-}
-  mappend = (<>)
+  mappend = (Sem.<>)
   {-# INLINE mappend #-}
 
 -- | Test whether the given point is inside the given path,

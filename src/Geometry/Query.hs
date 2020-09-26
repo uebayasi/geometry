@@ -34,7 +34,7 @@ import           Data.Functor.Rep
 import           Data.Profunctor
 import qualified Data.Profunctor.Rep   as P
 import           Data.Profunctor.Sieve
-import           Data.Semigroup
+import qualified Data.Semigroup        as Sem
 
 import           Linear.Affine
 import           Linear.Vector
@@ -55,7 +55,7 @@ import           Geometry.Transform
 --   the graphics-drawingcombinators package,
 --   <http://hackage.haskell.org/package/graphics-drawingcombinators>.
 newtype Query v n m = Query { runQuery :: Point v n -> m }
-  deriving (Functor, Applicative, Monad, Semigroup, Monoid)
+  deriving (Functor, Applicative, Monad, Sem.Semigroup, Monoid)
 
 instance Distributive (Query v n) where
   distribute a = Query $ \p -> fmap (\(Query q) -> q p) a
@@ -113,6 +113,15 @@ instance (Additive v, Num n) => HasOrigin (Query v n m) where
 instance (Additive v, Foldable v, Num n) => Transformable (Query v n m) where
   transform t = queryPoint %~ papply (inv t)
   {-# INLINE transform #-}
+
+-- Proof this definition satisfies the monoid homomorphism:
+--
+-- transform (t1 <> t2)
+--   = queryPoint %~ papply (inv (t1 <> t2))
+--   = queryPoint %~ papply (inv t2 <> inv t1)
+--   = queryPoint %~ (papply (inv t2) . papply (inv t1))
+--   = transform t1 . (queryPoint %~ papply (inv t2))
+--   = transform t1 . transform t2
 
 -- | Types which can answer a 'Query' about points inside the geometric
 --   object.

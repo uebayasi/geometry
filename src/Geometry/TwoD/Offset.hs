@@ -45,7 +45,7 @@ module Geometry.TwoD.Offset
 
 import           Control.Applicative
 import           Control.Lens            hiding (at)
-import           Data.Semigroup
+import qualified Data.Semigroup          as Sem
 import           Data.Typeable
 import           Prelude
 
@@ -90,7 +90,7 @@ instance Default LineCap where
   def = LineCapButt
 
 -- | 'Last' semigroup structure.
-instance Semigroup LineCap where
+instance Sem.Semigroup LineCap where
   _ <> b = b
 
 -- | How should the join points between line segments be drawn? The
@@ -103,7 +103,7 @@ data LineJoin
   deriving (Eq, Ord, Show, Typeable)
 
 -- | Last semigroup structure.
-instance Semigroup LineJoin where
+instance Sem.Semigroup LineJoin where
   _ <> b = b
 
 
@@ -288,7 +288,7 @@ locatedTrailSegments
   :: OrderedField n
   => Located (Trail V2 n)
   -> [Located (Segment V2 n)]
-locatedTrailSegments t = zipWith at (trailSegments (unLoc t)) (fromLocTrail t)
+locatedTrailSegments t = zipWith at (trailSegments (unLoc t)) (trailPoints t)
 
 -- | Offset a 'Trail' with options and by a given radius.  This generates a new
 --   trail that is always radius 'r' away from the given 'Trail' (depending on
@@ -320,11 +320,11 @@ offsetTrail' opts r t = joinSegments eps j isLoop (opts^.offsetMiterLimit) r end
     where
       eps = opts^.offsetEpsilon
       off = map (bindLoc (offsetSegment eps r)) . locatedTrailSegments
-      ends | isLoop    = (\(a:as) -> as ++ [a]) . fromLocTrail $ t
-           | otherwise = tail . fromLocTrail $ t
+      ends | isLoop    = (\(a:as) -> as ++ [a]) . trailPoints $ t
+           | otherwise = tail . trailPoints $ t
       j = fromLineJoin (opts^.offsetJoin)
 
-      isLoop = withTrail (const False) (const True) (unLoc t)
+      isLoop = has _LocLoop t
 
 -- | Offset a 'Trail' with the default options and a given radius. See
 --   'offsetTrail''.
@@ -425,7 +425,7 @@ expandLine opts r (mapLoc wrapLine -> t) = caps cap r s e (f r) (f $ -r)
 
 expandLoop :: RealFloat n => ExpandOpts n -> n -> Located (Loop V2 n) -> Path V2 n
 expandLoop opts r (mapLoc wrapLoop -> t) =
-  fromLocTrail (f r) <> (fromLocTrail . reversing . f $ -r)
+  fromLocTrail (f r) Sem.<> (fromLocTrail . reversing . f $ -r)
     where
       eps = opts^.expandEpsilon
       off r' = map (bindLoc (offsetSegment eps r')) . locatedTrailSegments
@@ -518,8 +518,8 @@ capSquare _r c a b = unLoc $ fromVertices [ a, a .+^ v, b .+^ v, b ]
 capArc :: RealFloat n => n -> Point V2 n -> Point V2 n -> Point V2 n -> Trail V2 n
 capArc r c a b = fromLocTrail . moveTo c $ fs
   where
-    fs | r < 0     = scale (-r) $ arcCW  (dirBetween a c) (dirBetween b c)
-       | otherwise = scale r    $ arcCCW (dirBetween a c) (dirBetween b c)
+    fs | r < 0     = scale (-r) $ arcCW  (dirBetween c a) (dirBetween c b)
+       | otherwise = scale r    $ arcCCW (dirBetween c a) (dirBetween c b)
 
 -- | Join together a list of located trails with the given join style.  The
 --   style is given as a function to compute the join given the local information
@@ -542,8 +542,8 @@ joinSegments _ _ _ _ _ _ [] = mempty `at` origin
 joinSegments _ _ _ _ _ [] _ = mempty `at` origin
 joinSegments epsilon j isLoop ml r es ts@(t:_) = t'
   where
-    t' | isLoop    = mapLoc (glueTrail . (<> f (take (length ts * 2 - 1) $ ss es (ts ++ [t])))) t
-       | otherwise = mapLoc (<> f (ss es ts)) t
+    t' | isLoop    = mapLoc (glueTrail . (Sem.<> f (take (length ts * 2 - 1) $ ss es (ts ++ [t])))) t
+       | otherwise = mapLoc (Sem.<> f (ss es ts)) t
     ss es' ts' = concat [[test a b $ j ml r e a b, Just $ unLoc b] | (e,(a,b)) <- zip es' . (zip <*> tail) $ ts']
     test a b tj
         | atStart b `distance` atEnd a > epsilon = Just tj

@@ -51,6 +51,7 @@ module Geometry.TwoD.Transform
 
   ) where
 
+import qualified Data.Semigroup       as Sem
 import           Geometry.Angle
 import           Geometry.Direction
 import           Geometry.Envelope
@@ -60,7 +61,6 @@ import           Geometry.TwoD.Types
 import           Geometry.TwoD.Vector
 
 import           Control.Lens         hiding (at, transform)
-import           Data.Semigroup
 
 import           Linear.Affine
 import           Linear.Vector
@@ -272,7 +272,7 @@ reflectXY = transform reflectionXY
 --   the point @p@ and direction @d@.
 reflectionAbout :: OrderedField n => P2 n -> Direction V2 n -> T2 n
 reflectionAbout p d =
-  conjugate (rotationTo (reflectY d) <> translation (origin .-. p))
+  conjugate (rotationTo (reflectY d) Sem.<> translation (origin .-. p))
             reflectionY
 {-# INLINE reflectionAbout #-}
 

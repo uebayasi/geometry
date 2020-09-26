@@ -2,6 +2,7 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE EmptyDataDecls             #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -147,7 +148,7 @@ import           Data.Functor.Contravariant         (phantom)
 import           Data.Hashable
 import           Data.Hashable.Lifted
 import           Data.Monoid.Action
-import           Data.Semigroup
+import qualified Data.Semigroup                     as Sem
 import           Data.Sequence                      (Seq)
 import qualified Data.Sequence                      as Seq
 import qualified Data.Serialize                     as Cereal
@@ -225,6 +226,7 @@ import           Geometry.Transform
 --   end to end, together with the cached offset vector from the start
 --   of the line to the end.
 data Line v n = Line !(Seq (Segment v n)) !(v n)
+  deriving Functor
 
 type instance V (Line v n) = v
 type instance N (Line v n) = n
@@ -240,12 +242,12 @@ instance Show1 v => Show1 (Line v) where
 instance (Show1 v, Show n) => Show (Line v n) where
   showsPrec = showsPrec1
 
-instance (Additive v, Num n) => Semigroup (Line v n) where
-  Line s1 o1 <> Line s2 o2 = Line (s1 <> s2) (o1 ^+^ o2)
+instance (Additive v, Num n) => Sem.Semigroup (Line v n) where
+  Line s1 o1 <> Line s2 o2 = Line (s1 Sem.<> s2) (o1 ^+^ o2)
   {-# INLINE (<>) #-}
 
 instance (Additive v, Num n) => Monoid (Line v n) where
-  mappend = (<>)
+  mappend = (Sem.<>)
   {-# INLINE mappend #-}
   mempty = Line mempty zero
   {-# INLINE mempty #-}
@@ -471,7 +473,7 @@ instance (Additive v, Num n) => Reversing (Line v n) where
 --   Loops are represented as a 'Line' together with a closing
 --   segment.
 data Loop v n = Loop !(Line v n) !(ClosingSegment v n)
-  deriving Eq
+  deriving (Eq, Functor)
 
 type instance V (Loop v n) = v
 type instance N (Loop v n) = n
@@ -627,7 +629,7 @@ instance (Additive v, Num n) => TangentEndValues (Loop v n) where
 data Trail v n
   = OpenTrail !(Line v n)
   | ClosedTrail !(Loop v n)
-  deriving Eq
+  deriving (Eq, Functor)
 
 type instance V (Trail v n) = v
 type instance N (Trail v n) = n
@@ -644,17 +646,17 @@ instance (Show1 v, Show n) => Show (Trail v n) where
 instance (Additive v, Num n) => Reversing (Trail v n) where
   reversing = withTrail (OpenTrail . reversing) (ClosedTrail . reversing)
 
-instance (Additive v, Num n) => Semigroup (Trail v n) where
+instance (Additive v, Num n) => Sem.Semigroup (Trail v n) where
   Empty <> t2 = t2
   t1 <> Empty = t1
   t1 <> t2 = flip withLine t1 $ \l1 ->
              flip withLine t2 $ \l2 ->
-             OpenTrail (l1 <> l2)
+             OpenTrail (l1 Sem.<> l2)
   {-# INLINE (<>) #-}
 
 instance (Additive v, Num n) => Monoid (Trail v n) where
   mempty = Empty
-  mappend = (<>)
+  mappend = (Sem.<>)
 
 instance Floating n => Action (Angle n) (Trail V2 n) where
   act = rotate
